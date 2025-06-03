@@ -1,0 +1,28 @@
+Project Root: DebugSync.AI
+
+├── client                     # React + Tailwind + Monaco frontend
+│   ├── public
+│   ├── src
+│   │   ├── components
+│   │   │   └── Editor.jsx     # Monaco code editor wrapper
+│   │   ├── pages
+│   │   │   ├── Home.jsx       # Home page after login
+│   │   │   └── Login.jsx      # Auth page with Google & Email login
+│   │   ├── App.jsx
+│   │   ├── main.jsx
+│   │   └── index.css
+│   ├── tailwind.config.js
+│   ├── postcss.config.js
+│   ├── vite.config.js
+│   └── package.json
+│
+├── server                     # Express + Socket.IO + Redis + Ollama
+│   ├── index.js               # Main server file
+│   ├── routes
+│   │   └── debug.js           # POST /api/debug using Ollama
+│   ├── redisClient.js         # Redis connection helper
+│   ├── auth.js                # Firebase admin or OAuth config
+│   └── package.json
+│
+├── README.md
+└── .gitignore
