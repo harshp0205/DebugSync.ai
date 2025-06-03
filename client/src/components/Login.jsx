@@ -13,7 +13,7 @@ export default function Login() {
     setError("");
     setLoading(true);
     setTimeout(() => {
-      if (email === "user@example.com" && password === "password123") {
+      if (email === "user@example.com" && password === "password123" || email === "user1@example.com" && password === "password123" ) {
         localStorage.setItem("loggedIn", "true");
         navigate("/home");
       } else {

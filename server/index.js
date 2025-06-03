@@ -29,7 +29,11 @@ const io = new Server(httpServer, { cors: { origin: "*" } });
     });
 
     socket.on("code-change", ({ roomId, code }) => {
-    //   pub.publish(roomId, code);
+      socket.to(roomId).emit("receive-code", code);
+    });
+
+    socket.on("cursor-change", ({ roomId, cursor, clientId }) => {
+      socket.to(roomId).emit("remote-cursor", { cursor, clientId });
     });
 
     socket.on("disconnect", () => {

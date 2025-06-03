@@ -20,7 +20,7 @@ export default function CodeEditorPage({ code, setCode, socket }) {
           Logout
         </button>
       </div>
-      <CodeEditor value={code} onChange={setCode} />
+      <CodeEditor value={code} onChange={setCode} socket={socket} />
     </div>
   );
 }
