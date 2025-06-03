@@ -7,20 +7,20 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: "*" } });
 
-// Setup Redis Pub/Sub
-// const pub = Redis.createClient();
-// const sub = pub.duplicate();
-
+// Setup Redis
+const redisClient = Redis.createClient();
 (async () => {
-//   await pub.connect();
-//   await sub.connect();
+  await redisClient.connect();
 
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
-    socket.on("join-room", (roomId) => {
+    socket.on("join-room", async (roomId) => {
       socket.join(roomId);
       console.log(`${socket.id} joined ${roomId}`);
+      // Load code from Redis and send to client
+      const code = await redisClient.get(`room:${roomId}:code`);
+      socket.emit("receive-code", code || "");
     });
 
     socket.on("hello-from-client", (msg) => {
@@ -28,7 +28,9 @@ const io = new Server(httpServer, { cors: { origin: "*" } });
       socket.emit("hello-from-server", "Hello from server!");
     });
 
-    socket.on("code-change", ({ roomId, code }) => {
+    socket.on("code-change", async ({ roomId, code }) => {
+      // Save code to Redis
+      await redisClient.set(`room:${roomId}:code`, code);
       socket.to(roomId).emit("receive-code", code);
     });
 
@@ -40,11 +42,6 @@ const io = new Server(httpServer, { cors: { origin: "*" } });
       console.log("User disconnected:", socket.id);
     });
   });
-
-  // Subscribe to all Redis channels only once
-//   sub.pSubscribe("*", (message, channel) => {
-//     io.to(channel).emit("receive-code", message);
-//   });
 
   httpServer.listen(4040, () => console.log("Server on 4040"));
   app.get("/", (req, res) => {

@@ -1,22 +1,23 @@
 import Editor from "@monaco-editor/react";
 import { useEffect, useRef, useState } from "react";
 
-export default function CodeEditor({ value, onChange, socket }) {
+export default function CodeEditor({ value, onChange, socket, roomId }) {
   const editorRef = useRef(null);
   const [remoteCursor, setRemoteCursor] = useState(null);
   const clientId = useRef(Math.random().toString(36).slice(2));
-  const roomId = "room-123";
 
   // Handle local cursor change and emit to server
   const handleEditorDidMount = (editor) => {
     editorRef.current = editor;
     editor.onDidChangeCursorPosition((e) => {
       const position = e.position;
-      socket.emit("cursor-change", {
-        roomId,
-        cursor: position,
-        clientId: clientId.current,
-      });
+      if (roomId) {
+        socket.emit("cursor-change", {
+          roomId,
+          cursor: position,
+          clientId: clientId.current,
+        });
+      }
     });
   };
 
