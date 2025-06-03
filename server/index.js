@@ -5,6 +5,7 @@ const Redis = require("redis");
 require("dotenv").config();
 const mongoose = require("mongoose");
 const Room = require("./Room");
+const axios = require("axios");
 
 const app = express();
 const httpServer = createServer(app);
@@ -59,3 +60,20 @@ const redisClient = Redis.createClient();
     res.send("DebugSync.AI Server is running");
   });
 })();
+
+// LLM suggestion endpoint (Ollama or OpenAI)
+app.use(express.json()); // Ensure JSON body parsing for API endpoints
+app.post("/api/llm-suggest", async (req, res) => {
+  const { code, prompt } = req.body;
+  try {
+    // Example for Ollama (local or remote)
+    const ollamaRes = await axios.post("http://localhost:11434/api/generate", {
+      model: "codellama:7b", // or "llama3" or your preferred model
+      prompt: `${prompt}\n\n${code}`,
+      stream: false
+    });
+    res.json({ suggestion: ollamaRes.data.response });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});

@@ -10,6 +10,7 @@ export default function CodeEditorPage({
   onLeaveRoom,
 }) {
   const [output, setOutput] = useState("");
+  const [suggestion, setSuggestion] = useState("");
   const navigate = useNavigate();
 
   const logout = () => {
@@ -48,6 +49,24 @@ export default function CodeEditorPage({
     }
   };
 
+  const handleSuggest = async () => {
+    setSuggestion("Loading...");
+    try {
+      const res = await fetch("http://localhost:4040/api/llm-suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          prompt: "Suggest a code completion or improvement for this code:",
+        }),
+      });
+      const data = await res.json();
+      setSuggestion(data.suggestion || "No suggestion.");
+    } catch (e) {
+      setSuggestion("Failed to get suggestion: " + e.message);
+    }
+  };
+
   return (
     <div className="p-4 bg-gray-900 min-h-screen text-white">
       <div className="flex justify-between items-center mb-4">
@@ -58,6 +77,12 @@ export default function CodeEditorPage({
             className="bg-green-600 px-3 py-1 rounded hover:bg-green-700"
           >
             Run
+          </button>
+          <button
+            onClick={handleSuggest}
+            className="bg-purple-600 px-3 py-1 rounded hover:bg-purple-700"
+          >
+            LLM Suggest
           </button>
           <button
             onClick={handleSaveRoom}
@@ -88,6 +113,10 @@ export default function CodeEditorPage({
       <div className="mt-4 bg-gray-800 p-4 rounded text-green-300 font-mono min-h-[60px]">
         <strong>Output:</strong>
         <pre>{output}</pre>
+      </div>
+      <div className="mt-4 bg-gray-800 p-4 rounded text-purple-300 font-mono min-h-[40px]">
+        <strong>Suggestion:</strong>
+        <pre>{suggestion}</pre>
       </div>
     </div>
   );
