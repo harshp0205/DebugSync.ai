@@ -6,6 +6,9 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const Room = require("./Room");
 const axios = require("axios");
+const { exec } = require("child_process");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 const httpServer = createServer(app);
@@ -61,8 +64,27 @@ const redisClient = Redis.createClient();
   });
 })();
 
-// LLM suggestion endpoint (Ollama or OpenAI)
 app.use(express.json()); // Ensure JSON body parsing for API endpoints
+
+// Code execution endpoint (runs JS code)
+app.post("/api/run", (req, res) => {
+  const { code, language } = req.body;
+  if (language !== "javascript") {
+    return res.status(400).json({ error: "Only JavaScript is supported in this demo." });
+  }
+  const tempFile = path.join(__dirname, "tempCode.js");
+  fs.writeFileSync(tempFile, code);
+  exec(`node "${tempFile}"`, { timeout: 5000 }, (err, stdout, stderr) => {
+    fs.unlinkSync(tempFile);
+    res.json({
+      stdout,
+      stderr,
+      error: err ? err.message : null,
+    });
+  });
+});
+
+// LLM suggestion endpoint (Ollama or OpenAI)
 app.post("/api/llm-suggest", async (req, res) => {
   const { code, prompt } = req.body;
   try {

@@ -33,7 +33,7 @@ export default function CodeEditorPage({
   const handleRun = async () => {
     setOutput("Running...");
     try {
-      const res = await fetch("http://localhost:5050/run", {
+      const res = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, language: "javascript" }),
@@ -52,7 +52,7 @@ export default function CodeEditorPage({
   const handleSuggest = async () => {
     setSuggestion("Loading...");
     try {
-      const res = await fetch("http://localhost:4040/api/llm-suggest", {
+      const res = await fetch("/api/llm-suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
