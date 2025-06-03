@@ -1,15 +1,13 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import CodeEditor from "./Editor";
 
-export default function CodeEditorPage() {
-  const [code, setCode] = useState("// Start coding...");
+export default function CodeEditorPage({ code, setCode, socket }) {
   const navigate = useNavigate();
 
-    const logout = () => {
+  const logout = () => {
     localStorage.removeItem("loggedIn");
     setTimeout(() => navigate("/login"), 0);
-    };
+  };
 
   return (
     <div className="p-4 bg-gray-900 min-h-screen text-white">
@@ -17,7 +15,7 @@ export default function CodeEditorPage() {
         <h1 className="text-2xl">DebugSync.AI</h1>
         <button
           onClick={logout}
-          className="bg-red-600 px-3 py-1 rounded hover:bg-red-700"
+          className="bg-red-600 px-3 mt-5 py-1 rounded hover:bg-red-700"
         >
           Logout
         </button>
