@@ -5,7 +5,6 @@ export default function RoomSelector({ onRoomSelected }) {
   const [error, setError] = useState("");
 
   const createRoom = () => {
-    // Generate a random 6-character room code
     const newRoom = Math.random().toString(36).slice(2, 8);
     onRoomSelected(newRoom);
   };

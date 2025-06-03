@@ -32,7 +32,6 @@ function App() {
     socket.on("hello-from-server", (msg) => {
       console.log("Received from server:", msg);
     });
-    socket.emit("join-room", roomId);
     socket.on("receive-code", (newCode) => {
       setCode(newCode);
     });
