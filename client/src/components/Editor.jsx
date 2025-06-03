@@ -85,7 +85,7 @@ export default function CodeEditor({ value, onChange, socket, roomId }) {
         }
       `}</style>
       <Editor
-        height="80vh"
+        height="70vh"
         defaultLanguage="javascript"
         defaultValue="// Start coding here..."
         value={value}
