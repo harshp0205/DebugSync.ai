@@ -23,7 +23,9 @@ export default function CodeEditorPage({
 
   const logout = () => {
     localStorage.removeItem("loggedIn");
-    setTimeout(() => navigate("/login"), 0);
+    localStorage.removeItem("username");
+    localStorage.removeItem("token");
+    navigate("/login", { replace: true });
   };
 
   const handleLeaveRoom = () => {

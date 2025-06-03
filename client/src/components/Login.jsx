@@ -12,15 +12,22 @@ export default function Login() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    setTimeout(() => {
-      if (email === "user@example.com" && password === "password123" || email === "user1@example.com" && password === "password123" ) {
-        localStorage.setItem("loggedIn", "true");
-        navigate("/home");
-      } else {
-        setError("Invalid email or password.");
-      }
-      setLoading(false);
-    }, 1000);
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Login failed");
+      localStorage.setItem("loggedIn", "true");
+      localStorage.setItem("username", data.email);
+      localStorage.setItem("token", data.token);
+      setTimeout(() => navigate("/home", { replace: true }), 0);
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
   };
 
   return (

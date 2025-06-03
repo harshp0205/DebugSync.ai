@@ -10,7 +10,7 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
@@ -33,12 +33,20 @@ export default function SignUp() {
       return;
     }
 
-    // Simulate async signup
-    setTimeout(() => {
+    try {
+      const res = await fetch("/api/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Signup failed");
       setSuccess("Account created! Redirecting to login...");
-      setLoading(false);
       setTimeout(() => navigate("/login"), 1200);
-    }, 1000);
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
   };
 
   return (

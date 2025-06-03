@@ -9,6 +9,9 @@ const axios = require("axios");
 const { exec } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const User = require("./User");
+const jwt = require("jsonwebtoken");
+const JWT_SECRET = process.env.JWT_SECRET || "debugsyncsecret";
 
 const app = express();
 const httpServer = createServer(app);
@@ -65,6 +68,38 @@ const redisClient = Redis.createClient();
 })();
 
 app.use(express.json()); // Ensure JSON body parsing for API endpoints
+
+// User signup
+app.post("/api/signup", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: "Email and password required." });
+  try {
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ error: "Email already registered." });
+    const user = new User({ email, password });
+    await user.save();
+    const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
+    res.json({ token, email: user.email });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// User login
+app.post("/api/login", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: "Email and password required." });
+  try {
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ error: "Invalid credentials." });
+    const match = await user.comparePassword(password);
+    if (!match) return res.status(400).json({ error: "Invalid credentials." });
+    const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
+    res.json({ token, email: user.email });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // Code execution endpoint (runs JS code)
 app.post("/api/run", (req, res) => {
