@@ -22,6 +22,9 @@ export default function CodeEditorPage({
   const [chatMessages, setChatMessages] = useState([]);
   const [showExitPrompt, setShowExitPrompt] = useState(false);
   const [pendingExit, setPendingExit] = useState(false);
+  // const [groupChatOpen, setGroupChatOpen] = useState(false);
+  // const [groupInput, setGroupInput] = useState("");
+  // const [groupMessages, setGroupMessages] = useState([]);
   const navigate = useNavigate();
 
   // Get username from localStorage (assuming it's stored as 'username')
@@ -193,6 +196,10 @@ export default function CodeEditorPage({
     setRemoteCursors({});
     setChatMessages([]);
     setChatInput("");
+    // Fetch group chat history for this room
+    fetch(`/api/room/${roomId}/chat`).then(res => res.json()).then(data => {
+      setGroupMessages(Array.isArray(data.chat) ? data.chat : []);
+    });
   }, [roomId]);
 
   // When a new room is created, reset all state to fresh
@@ -209,23 +216,44 @@ export default function CodeEditorPage({
     // Set the new roomId (handled in App.jsx, but this ensures state is fresh)
   };
 
+  // --- Add state and logic at the top of the component ---
+  const [groupChatOpen, setGroupChatOpen] = useState(false);
+  const [groupInput, setGroupInput] = useState("");
+  const [groupMessages, setGroupMessages] = useState([]);
+
+  // --- Socket logic for group chat ---
+  useEffect(() => {
+    if (!socket || !roomId) return;
+    const handleGroupMessage = ({ username: sender, message }) => {
+      setGroupMessages(msgs => [...msgs, { sender, text: message }]);
+    };
+    socket.on("group-message", handleGroupMessage);
+    return () => socket.off("group-message", handleGroupMessage);
+  }, [socket, roomId]);
+
+  const handleSendGroupChat = () => {
+    if (!groupInput.trim()) return;
+    socket.emit("group-message", { roomId, username, message: groupInput });
+    setGroupInput("");
+  };
+
   return (
-    <div className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#232526] via-[#414345] to-[#232526] overflow-hidden">
+    <div className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#18181c] via-[#232526] to-[#18181c] overflow-hidden text-white">
       {/* Info Bar (left side) */}
-      <div className="fixed left-6 z-30 flex flex-col gap-2 items-start bg-white/10 backdrop-blur-md rounded-xl shadow-lg px-5 py-3 border border-white/10 min-w-[180px]">
+      <div className="fixed left-6 z-30 flex flex-col gap-2 items-start bg-[#232526]/80 backdrop-blur-md rounded-2xl shadow-2xl px-6 py-4 border border-white/10 min-w-[200px]">
         <div className="flex items-center gap-2">
-          <span className="text-gray-300 font-semibold">Room:</span>
+          <span className="text-gray-400 font-semibold">Room:</span>
           <span className="text-blue-300 font-mono text-base">{roomId}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-gray-300 font-semibold">User:</span>
+          <span className="text-gray-400 font-semibold">User:</span>
           <span className="text-green-300 font-mono text-base">{username}</span>
         </div>
         <div className="mt-2">
-          <span className="text-gray-400 text-xs font-semibold">Participants:</span>
+          <span className="text-gray-500 text-xs font-semibold">Participants:</span>
           <div className="flex flex-wrap gap-2 mt-2">
             {users.map(u => (
-              <div key={u} className="flex items-center gap-2 bg-gray-800/80 px-3 py-1 rounded-lg shadow border border-white/10">
+              <div key={u} className="flex items-center gap-2 bg-[#232526]/90 px-3 py-1 rounded-lg shadow border border-white/10">
                 <span style={{ background: getColorForUser(u) }} className="inline-block w-3 h-3 rounded-full border border-white/70"></span>
                 <span className="truncate text-white/90 font-mono text-sm">{u}</span>
               </div>
@@ -235,58 +263,62 @@ export default function CodeEditorPage({
       </div>
 
       {/* Top Bar */}
-      <div className="fixed top-0 left-0 w-full flex items-center justify-between px-6 py-3 z-20 backdrop-blur-md bg-white/10 border-b border-white/10 shadow-md">
-        <div className="flex items-center gap-2">
-          <img src="/vite.svg" alt="Logo" className="h-7 w-7 drop-shadow-lg" />
-          <span className="text-2xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent select-none">
+      <div className="fixed top-0 left-0 w-full flex items-center justify-between px-8 py-4 z-20 backdrop-blur-md bg-[#232526]/80 border-b border-white/10 shadow-xl">
+        <div className="flex items-center gap-3">
+          <img src="/vite.svg" alt="Logo" className="h-8 w-8 drop-shadow-lg" />
+          <span className="text-3xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent select-none tracking-tight drop-shadow-lg">
             DebugSync.AI
           </span>
         </div>
-        <div className="flex gap-2 items-center">
-          <select
-            value={language}
-            onChange={handleLanguageSelect}
-            className="bg-gray-800 text-white rounded px-2 py-1 text-sm border border-gray-600 focus:outline-none"
-          >
-            <option value="javascript">JavaScript</option>
-            <option value="cpp">C++</option>
-          </select>
+        <div className="flex gap-0 items-center bg-[#18181c]/80 rounded-2xl shadow border border-white/10 px-2 py-1">
+          {/* Language Selector as a pill tab */}
+          <div className="flex items-center mr-2">
+            <span className="text-xs text-gray-400 font-semibold mr-2">Language:</span>
+            <select
+              value={language}
+              onChange={handleLanguageSelect}
+              className="bg-[#232526] text-white rounded-full px-3 py-1 text-base border border-gray-700 focus:outline-none shadow font-semibold hover:bg-[#232526]/80 transition-all duration-150"
+              style={{ minWidth: 120 }}
+            >
+              <option value="javascript">JavaScript</option>
+              <option value="cpp">C++</option>
+            </select>
+          </div>
+          {/* Tab-style buttons */}
           <button
             onClick={handleRun}
-            className="flex items-center gap-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-3 py-1.5 rounded-lg shadow hover:scale-105 transition-all text-sm font-medium"
+            className="flex items-center gap-1 px-4 py-2 rounded-full font-semibold text-base bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow hover:scale-105 hover:from-green-600 hover:to-emerald-700 focus:outline-none border-2 border-transparent mx-1 transition-all duration-150"
+            style={{ boxShadow: '0 2px 8px #00ffb340' }}
           >
-            <FaPlay className="text-base" /> Run
+            <FaPlay className="text-lg" /> Run
           </button>
-          {/* <button
-            onClick={handleSuggest}
-            className="flex items-center gap-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-3 py-1.5 rounded-lg shadow hover:scale-105 transition-all text-sm font-medium"
-          >
-            <FaMagic className="text-base" /> Suggest
-          </button> */}
           <button
             onClick={handleSaveRoom}
-            className="flex items-center gap-1 bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-3 py-1.5 rounded-lg shadow hover:scale-105 transition-all text-sm font-medium"
+            className="flex items-center gap-2 px-3 py-2 rounded-full font-semibold text-base bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow hover:scale-105 hover:from-blue-600 hover:to-cyan-600 focus:outline-none border-2 border-transparent mx-1 transition-all duration-150"
+            style={{ boxShadow: '0 2px 8px #38bdf840' }}
           >
-            <FaSave className="text-base" /> Save
+            <FaSave className="text-lg" /> Save
           </button>
           <button
             onClick={handleLeaveRoom}
-            className="flex items-center gap-1 bg-gradient-to-r from-gray-400 to-gray-600 text-white px-3 py-1.5 rounded-lg shadow hover:scale-105 transition-all text-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 rounded-full font-semibold text-base bg-gradient-to-r from-gray-400 to-gray-600 text-white shadow hover:scale-105 hover:from-gray-500 hover:to-gray-700 focus:outline-none border-2 border-transparent mx-1 transition-all duration-150"
+            style={{ boxShadow: '0 2px 8px #a3a3a340' }}
           >
-            <FaSignOutAlt className="text-base" /> Exit
+            <FaSignOutAlt className="text-lg" /> Exit
           </button>
           <button
             onClick={logout}
-            className="flex items-center gap-1 bg-gradient-to-r from-red-500 to-pink-600 text-white px-3 py-1.5 rounded-lg shadow hover:scale-105 transition-all text-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 rounded-full font-semibold text-base bg-gradient-to-r from-red-500 to-pink-600 text-white shadow hover:scale-105 hover:from-red-600 hover:to-pink-700 focus:outline-none border-2 border-transparent mx-1 transition-all duration-150"
+            style={{ boxShadow: '0 2px 8px #ff4b4b40' }}
           >
-            <FaPowerOff className="text-base" /> Logout
+            <FaPowerOff className="text-lg" /> Logout
           </button>
         </div>
       </div>
 
       {/* Main Card (glassmorphism, centered, not overflowing) */}
-      <div className="relative z-10 mt-24 w-full max-w-3xl flex flex-col gap-4 items-center px-2">
-        <div className="w-full rounded-2xl bg-white/10 backdrop-blur-lg shadow-xl border border-white/20 p-4 flex flex-col gap-3">
+      <div className="relative z-10 mt-28 w-full max-w-4xl flex flex-col gap-6 items-center px-2">
+        <div className="w-full rounded-3xl bg-[#18181c]/90 backdrop-blur-2xl shadow-2xl border border-white/20 p-6 flex flex-col gap-5">
           <CodeEditor
             value={code}
             onChange={setCode}
@@ -294,13 +326,13 @@ export default function CodeEditorPage({
             roomId={roomId}
             remoteCursors={remoteCursors}
           />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-            <div className="bg-gradient-to-br from-gray-900/80 to-gray-800/80 rounded-xl p-3 shadow border border-white/10 flex flex-col min-h-[32px] max-h-32 transition-all duration-200">
-              <div className="flex items-center gap-1 mb-1">
-                <FaTerminal className="text-green-400 text-base" />
-                <strong className="text-green-200 text-base">Output</strong>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
+            <div className="bg-gradient-to-br from-[#232526]/90 to-[#18181c]/90 rounded-2xl p-4 shadow border border-white/10 flex flex-col min-h-[40px] max-h-40 transition-all duration-200">
+              <div className="flex items-center gap-2 mb-1">
+                <FaTerminal className="text-green-400 text-lg" />
+                <strong className="text-green-200 text-lg">Output</strong>
               </div>
-              <pre className="text-green-100 font-mono whitespace-pre-wrap break-words text-sm mt-1 max-h-24 overflow-auto">{output}</pre>
+              <pre className="text-green-100 font-mono whitespace-pre-wrap break-words text-base mt-1 max-h-28 overflow-auto">{output}</pre>
             </div>
             {/* <div className={`bg-gradient-to-br from-purple-900/80 to-pink-900/80 rounded-xl p-3 shadow border border-white/10 flex flex-col transition-all duration-200 ${showSuggestion ? 'min-h-[180px]' : 'min-h-[32px]'}`}>
               <div className="flex items-center gap-1 mb-1 justify-between">
@@ -323,58 +355,110 @@ export default function CodeEditorPage({
         </div>
       </div>
 
+      {/* Chat/Assistant Toggle Buttons */}
+      <div className="fixed right-8 bottom-16 z-50 flex flex-col gap-4">
+        <button
+          onClick={() => { setChatOpen(true); setGroupChatOpen(false); }}
+          className={`bg-purple-600 hover:bg-purple-700 text-white rounded-full p-5 shadow-2xl flex items-center justify-center text-3xl transition-all duration-150 ${chatOpen ? 'ring-4 ring-purple-400/40' : ''}`}
+          title="AI Assistant"
+        >
+          <FaComments />
+        </button>
+        <button
+          onClick={() => { setGroupChatOpen(true); setChatOpen(false); }}
+          className={`bg-blue-600 hover:bg-blue-700 text-white rounded-full p-5 shadow-2xl flex items-center justify-center text-3xl transition-all duration-150 ${groupChatOpen ? 'ring-4 ring-blue-400/40' : ''}`}
+          title="Group Chat"
+        >
+          <span className="font-bold text-xl">👥</span>
+        </button>
+      </div>
+
       {/* AI Chatbot Sidebar */}
-      <div className={`fixed top-0 right-0 h-full w-80 bg-white/10 backdrop-blur-lg shadow-2xl border-l border-white/20 z-40 flex flex-col transition-transform duration-300 ${chatOpen ? "translate-x-0" : "translate-x-full"}`}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-          <span className="font-bold text-lg text-purple-200 flex items-center gap-2"><FaComments /> AI Assistant</span>
-          <button onClick={() => setChatOpen(false)} className="text-white text-xl">×</button>
+      <div className={`fixed top-0 right-0 h-full w-80 bg-[#232526]/90 backdrop-blur-2xl shadow-2xl border-l border-white/20 z-40 flex flex-col transition-transform duration-300 ${chatOpen ? "translate-x-0" : "translate-x-full"}`}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+          <span className="font-bold text-2xl text-purple-200 flex items-center gap-3"><FaComments /> AI Assistant</span>
+          <button onClick={() => setChatOpen(false)} className="text-white text-4xl w-12 h-12 flex items-center justify-center rounded-full hover:bg-white/10 transition-all duration-150">×</button>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div className="flex-1 overflow-y-auto p-6 space-y-3">
           {chatMessages.map((msg, i) => (
-            <div key={i} className={`rounded-lg px-3 py-2 max-w-[90%] ${msg.sender === "AI" ? "bg-purple-900 text-purple-100 self-end ml-auto" : "bg-gray-800 text-white self-start mr-auto"}`}>{msg.text}</div>
+            <div key={i} className={`rounded-xl px-4 py-3 max-w-[90%] ${msg.sender === "AI" ? "bg-purple-900 text-purple-100 self-end ml-auto" : "bg-gray-800 text-white self-start mr-auto"}`}>{msg.text}</div>
           ))}
         </div>
-        <div className="p-3 border-t border-white/10 flex gap-2">
+        <div className="p-4 border-t border-white/10 flex gap-3">
           <input
-            className="flex-1 rounded-lg px-3 py-2 bg-gray-900 text-white focus:outline-none"
+            className="flex-1 rounded-xl px-4 py-3 bg-gray-900 text-white focus:outline-none"
             value={chatInput}
             onChange={e => setChatInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleSendChat()}
             placeholder="Ask the AI anything..."
           />
-          <button onClick={handleSendChat} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold">Send</button>
+          <button onClick={handleSendChat} className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-semibold">Send</button>
         </div>
       </div>
-      {/* Chat open button */}
-      <button onClick={() => setChatOpen(true)} className="fixed right-6 bottom-6 z-50 bg-purple-600 hover:bg-purple-700 text-white rounded-full p-4 shadow-lg flex items-center justify-center text-2xl"><FaComments /></button>
+
+      {/* Group Chat Sidebar */}
+      <div className={`fixed top-0 right-0 h-full w-80 bg-[#232526]/90 backdrop-blur-2xl shadow-2xl border-l border-white/20 z-40 flex flex-col transition-transform duration-300 ${groupChatOpen ? "translate-x-0" : "translate-x-full"}`}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+          <span className="font-bold text-2xl text-blue-200 flex items-center gap-3">👥 Group Chat</span>
+          <button onClick={() => setGroupChatOpen(false)} className="text-white text-4xl w-12 h-12 flex items-center justify-center rounded-full hover:bg-white/10 transition-all duration-150">×</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+          {groupMessages.map((msg, i) => (
+            <div
+              key={i}
+              className={`relative group rounded-xl px-4 py-3 max-w-[90%] ${msg.sender === username ? "bg-blue-900 text-blue-100 self-end ml-auto" : "bg-gray-800 text-white self-start mr-auto"}`}
+            >
+              {msg.sender}: {msg.text}
+              {msg.timestamp && (
+                <span
+                  className="absolute -top-7 left-0 bg-black/80 text-xs text-gray-200 px-2 py-1 rounded shadow opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none"
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  {new Date(msg.timestamp).toLocaleString()}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="p-4 border-t border-white/10 flex gap-3">
+          <input
+            className="flex-1 rounded-xl px-4 py-3 bg-gray-900 text-white focus:outline-none"
+            value={groupInput}
+            onChange={e => setGroupInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleSendGroupChat()}
+            placeholder="Message the group..."
+          />
+          <button onClick={handleSendGroupChat} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-semibold">Send</button>
+        </div>
+      </div>
 
       {/* Toast notification */}
       {toast && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-white/90 text-gray-900 px-6 py-3 rounded-xl shadow-2xl font-semibold text-base z-50 animate-fade-in">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-white/90 text-gray-900 px-8 py-4 rounded-2xl shadow-2xl font-semibold text-lg z-50 animate-fade-in">
           {toast}
         </div>
       )}
 
       {/* Exit confirmation modal */}
       {showExitPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-gray-900 rounded-xl shadow-xl p-8 flex flex-col gap-4 border border-white/20 min-w-[320px]">
-            <div className="text-lg text-white font-semibold">Do you want to save your work before exiting?</div>
-            <div className="flex gap-4 justify-end">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-[#232526] rounded-2xl shadow-2xl p-10 flex flex-col gap-6 border border-white/20 min-w-[340px]">
+            <div className="text-xl text-white font-semibold">Do you want to save your work before exiting?</div>
+            <div className="flex gap-6 justify-end">
               <button
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold"
+                className="bg-green-600 hover:bg-green-700 text-white px-5 py-3 rounded-xl font-semibold"
                 onClick={() => confirmExit(true)}
               >
                 Save & Exit
               </button>
               <button
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold"
+                className="bg-red-600 hover:bg-red-700 text-white px-5 py-3 rounded-xl font-semibold"
                 onClick={() => confirmExit(false)}
               >
                 Exit Without Saving
               </button>
               <button
-                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold"
+                className="bg-gray-600 hover:bg-gray-700 text-white px-5 py-3 rounded-xl font-semibold"
                 onClick={() => { setShowExitPrompt(false); setPendingExit(false); }}
               >
                 Cancel
@@ -397,3 +481,8 @@ export default function CodeEditorPage({
     </div>
   );
 }
+
+// --- Add to socket.io backend (server/index.js) ---
+// socket.on("group-message", ({ roomId, username, message }) => {
+//   io.to(roomId).emit("group-message", { username, message });
+// });

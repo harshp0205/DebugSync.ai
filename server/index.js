@@ -58,9 +58,13 @@ const redisClient = Redis.createClient();
       socket.to(roomId).emit("receive-code", code);
     });
     socket.on("save-room", async ({ roomId, code }) => {
+      // Save code and chat to MongoDB
+      const room = await Room.findOne({ roomId });
+      let chat = [];
+      if (room && room.chat) chat = room.chat;
       await Room.findOneAndUpdate(
         { roomId },
-        { code, updatedAt: new Date() },
+        { code, chat, updatedAt: new Date() },
         { upsert: true }
       );
       await redisClient.set(`room:${roomId}:code`, code);
@@ -132,8 +136,16 @@ const redisClient = Redis.createClient();
       }
     });
 
-    socket.on("chat-message", ({ roomId, username, message }) => {
-      io.to(roomId).emit("chat-message", { username, message });
+    // --- Group Chat Logic ---
+    socket.on("group-message", async ({ roomId, username, message }) => {
+      // Broadcast to all users in the room
+      io.to(roomId).emit("group-message", { username, message });
+      // Save to MongoDB
+      await Room.findOneAndUpdate(
+        { roomId },
+        { $push: { chat: { sender: username, text: message, timestamp: new Date() } }, $set: { updatedAt: new Date() } },
+        { upsert: true }
+      );
     });
   });
 
@@ -256,6 +268,17 @@ app.delete("/api/room/:roomId", async (req, res) => {
     // Remove from Redis
     await redisClient.del(`room:${roomId}:code`);
     res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Fetch chat history for a room
+app.get("/api/room/:roomId/chat", async (req, res) => {
+  const { roomId } = req.params;
+  try {
+    const room = await Room.findOne({ roomId });
+    res.json({ chat: room && room.chat ? room.chat : [] });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
