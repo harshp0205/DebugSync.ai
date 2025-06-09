@@ -96,7 +96,7 @@ export default function CodeEditor({ value, onChange, socket, roomId, remoteCurs
     <>
       
       <Editor
-        height="65vh"
+        height="55vh"
         defaultLanguage="javascript"
         defaultValue="// Start coding here..."
         value={value}

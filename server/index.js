@@ -67,10 +67,6 @@ const redisClient = Redis.createClient();
         if (!room.users.includes(username)) {
           await Room.updateOne({ roomId }, { $addToSet: { users: username } });
         }
-        // If room has no admin (shouldn't happen), assign current user as admin
-        if (!room.admin) {
-          await Room.updateOne({ roomId }, { admin: username });
-        }
         socket._isAdmin = (room.admin === username);
       }
       socket._roomId = roomId;

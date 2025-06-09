@@ -459,7 +459,7 @@ export default function CodeEditorPage({
                 <FaTerminal className="text-green-400 text-lg" />
                 <strong className="text-green-200 text-lg">Output</strong>
               </div>
-              <pre className="text-green-100 font-mono whitespace-pre-wrap break-words text-base mt-1 max-h-28 overflow-auto">{output}</pre>
+              <pre className="text-green-100 font-mono whitespace-pre-wrap break-words text-base mt-11 max-h-52 overflow-auto">{output}</pre>
             </div>
             {/* <div className={`bg-gradient-to-br from-purple-900/80 to-pink-900/80 rounded-xl p-3 shadow border border-white/10 flex flex-col transition-all duration-200 ${showSuggestion ? 'min-h-[180px]' : 'min-h-[32px]'}`}>
               <div className="flex items-center gap-1 mb-1 justify-between">
@@ -641,18 +641,32 @@ export default function CodeEditorPage({
             ) : history.length === 0 ? (
               <div className="text-gray-400 text-center py-8">No history found for this room.</div>
             ) : (
-              <div className="flex flex-col gap-2">
-                {history.map((snap, idx) => (
-                  <div
-                    key={idx}
-                    className={`rounded-xl px-4 py-3 bg-[#18181c]/80 border border-white/10 flex flex-col gap-1 cursor-pointer hover:bg-[#232526]/90 transition`}
-                    onClick={() => setSelectedSnapshot(snap)}
-                  >
-                    <div className="flex items-center gap-3 text-sm text-gray-300">
-                      <span className="font-bold text-blue-200">{snap.user || "Unknown"}</span>
-                      <span className="text-gray-400">{new Date(snap.timestamp).toLocaleString()}</span>
+              <div className="flex flex-col gap-4">
+                {/* Group history by username */}
+                {Object.entries(
+                  history.reduce((acc, snap) => {
+                    const user = snap.user || "Unknown";
+                    if (!acc[user]) acc[user] = [];
+                    acc[user].push(snap);
+                    return acc;
+                  }, {})
+                ).map(([user, snaps]) => (
+                  <div key={user} className="mb-2">
+                    <div className="text-lg font-bold text-blue-300 mb-1">{username}</div>
+                    <div className="flex flex-col gap-2">
+                      {snaps.map((snap, idx) => (
+                        <div
+                          key={idx}
+                          className={`rounded-xl px-4 py-3 bg-[#18181c]/80 border border-white/10 flex flex-col gap-1 cursor-pointer hover:bg-[#232526]/90 transition`}
+                          onClick={() => setSelectedSnapshot(snap)}
+                        >
+                          <div className="flex items-center gap-3 text-sm text-gray-300">
+                            <span className="text-gray-400">{new Date(snap.timestamp).toLocaleString()}</span>
+                          </div>
+                          <pre className="text-xs text-gray-200 mt-1 max-h-16 overflow-auto whitespace-pre-wrap break-words">{snap.code.slice(0, 200)}{snap.code.length > 200 ? "..." : ""}</pre>
+                        </div>
+                      ))}
                     </div>
-                    <pre className="text-xs text-gray-200 mt-1 max-h-16 overflow-auto whitespace-pre-wrap break-words">{snap.code.slice(0, 200)}{snap.code.length > 200 ? "..." : ""}</pre>
                   </div>
                 ))}
               </div>
