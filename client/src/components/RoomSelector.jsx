@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { FaPlus, FaSignInAlt, FaDoorOpen } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
 
 export default function RoomSelector({ onRoomSelected }) {
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const createRoom = () => {
     const newRoom = Math.random().toString(36).slice(2, 8);
     onRoomSelected(newRoom);
+    navigate("/room");
   };
 
   const joinRoom = () => {
@@ -17,6 +20,7 @@ export default function RoomSelector({ onRoomSelected }) {
     }
     setError("");
     onRoomSelected(input.trim());
+    navigate("/room");
   };
 
   return (

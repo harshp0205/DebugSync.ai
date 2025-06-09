@@ -116,7 +116,7 @@ export default function CodeEditorPage({
     setRemoteCursors({});
     setChatMessages([]);
     setChatInput("");
-    if (onLeaveRoom) onLeaveRoom();
+    if (onLeaveRoom) onLeaveRoom(); // App will handle navigation
   };
 
   const confirmExit = (shouldSave) => {
@@ -133,7 +133,7 @@ export default function CodeEditorPage({
     setRemoteCursors({});
     setChatMessages([]);
     setChatInput("");
-    if (onLeaveRoom) onLeaveRoom();
+    if (onLeaveRoom) onLeaveRoom(); // App will handle navigation
   };
 
   const handleSaveRoom = () => {

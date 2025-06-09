@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import io from "socket.io-client";
 import Login from "./components/Login";
@@ -10,15 +10,15 @@ const socket = io("http://localhost:4040", {
   autoConnect: true,
 });
 
-function App() {
+function AppRoutes() {
   const [code, setCode] = useState("// Start coding...");
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [roomId, setRoomId] = useState("");
   const isLoggedIn = !!localStorage.getItem("loggedIn");
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!roomId) return;
-    // Connection status listeners
     function onConnect() {
       setIsConnected(true);
       socket.emit("join-room", roomId);
@@ -50,28 +50,30 @@ function App() {
     }
   };
 
+  // Handler for joining/creating a room
+  const handleRoomSelected = (newRoomId) => {
+    setRoomId(newRoomId);
+    navigate("/room");
+  };
+
+  // Handler for leaving a room
+  const handleLeaveRoom = () => {
+    setRoomId("");
+    navigate("/home");
+  };
+
   if (!isLoggedIn) {
     return (
-      <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="*" element={<Navigate to="/login" />} />
-        </Routes>
-      </Router>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="*" element={<Navigate to="/login" />} />
+      </Routes>
     );
   }
 
-  if (!roomId) {
-    return <RoomSelector onRoomSelected={setRoomId} />;
-  }
-
-  const handleLeaveRoom = () => {
-    setRoomId("");
-  };
-
   return (
-    <Router>
+    <>
       <div className="fixed top-0 right-0 m-2 text-xs text-gray-400 z-50">
         Room: <span className="text-blue-300 font-mono">{roomId}</span> | Socket: {isConnected ? (
           <span className="text-green-400">Connected</span>
@@ -82,11 +84,13 @@ function App() {
       <Routes>
         <Route
           path="/"
-          element={<Navigate to="/home" />}
-        />
+          element={<Navigate to="/home" />} />
         <Route
           path="/home"
-          element={
+          element={<RoomSelector onRoomSelected={handleRoomSelected} />} />
+        <Route
+          path="/room"
+          element={roomId ? (
             <CodeEditorPage
               code={code}
               setCode={handleChange}
@@ -94,10 +98,20 @@ function App() {
               roomId={roomId}
               onLeaveRoom={handleLeaveRoom}
             />
-          }
+          ) : (
+            <Navigate to="/home" />
+          )}
         />
         <Route path="*" element={<Navigate to="/home" />} />
       </Routes>
+    </>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AppRoutes />
     </Router>
   );
 }
