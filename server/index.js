@@ -3,6 +3,21 @@ const { createServer } = require("http");
 const { Server } = require("socket.io");
 const Redis = require("redis");
 require("dotenv").config();
+// Patch: Load OPENROUTER_API_KEY from .env if not already set
+if (!process.env.OPENROUTER_API_KEY) {
+  const fs = require('fs');
+  const path = require('path');
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    const lines = fs.readFileSync(envPath, 'utf-8').split('\n');
+    for (const line of lines) {
+      if (line.startsWith('OPENROUTER_API_KEY=')) {
+        process.env.OPENROUTER_API_KEY = line.split('=')[1].trim();
+        break;
+      }
+    }
+  }
+}
 const mongoose = require("mongoose");
 const Room = require("./Room");
 const axios = require("axios");
@@ -53,11 +68,33 @@ const redisClient = Redis.createClient();
     });
 
     socket.on("cursor-change", ({ roomId, cursor, clientId }) => {
-      socket.to(roomId).emit("remote-cursor", { cursor, clientId });
+      // Find username for this clientId (not tracked yet, so just send clientId for now)
+      io.to(roomId).emit("remote-cursor", { cursor, clientId, username: clientId });
     });
 
+    // --- Real-time Presence ---
+    const roomUsers = {};
+
+    socket.on("user-join", ({ roomId, username }) => {
+      if (!roomUsers[roomId]) roomUsers[roomId] = new Set();
+      roomUsers[roomId].add(username);
+      io.to(roomId).emit("room-users", Array.from(roomUsers[roomId]));
+      socket.join(roomId);
+      socket._roomId = roomId;
+      socket._username = username;
+    });
     socket.on("disconnect", () => {
+      const { _roomId, _username } = socket;
+      if (_roomId && _username && roomUsers[_roomId]) {
+        roomUsers[_roomId].delete(_username);
+        io.to(_roomId).emit("room-users", Array.from(roomUsers[_roomId]));
+      }
       console.log("User disconnected:", socket.id);
+    });
+
+    socket.on("language-change", ({ roomId, language }) => {
+      // Broadcast to all users in the room except sender
+      socket.to(roomId).emit("language-change", { language });
     });
   });
 
@@ -101,36 +138,86 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// Code execution endpoint (runs JS code)
+// --- Node.js Only Code Execution (Initial Version) ---
 app.post("/api/run", (req, res) => {
   const { code, language } = req.body;
-  if (language !== "javascript") {
-    return res.status(400).json({ error: "Only JavaScript is supported in this demo." });
-  }
-  const tempFile = path.join(__dirname, "tempCode.js");
-  fs.writeFileSync(tempFile, code);
-  exec(`node "${tempFile}"`, { timeout: 5000 }, (err, stdout, stderr) => {
-    fs.unlinkSync(tempFile);
-    res.json({
-      stdout,
-      stderr,
-      error: err ? err.message : null,
+  if (language === "javascript") {
+    const tempFile = path.join(__dirname, "tempCode.js");
+    fs.writeFileSync(tempFile, code);
+    exec(`node "${tempFile}"`, { timeout: 5000 }, (err, stdout, stderr) => {
+      fs.unlinkSync(tempFile);
+      res.json({
+        stdout,
+        stderr,
+        error: err ? err.message : null,
+      });
     });
-  });
+  } else if (language === "cpp" || language === "c++") {
+    const tempFile = path.join(__dirname, "tempCode.cpp");
+    const execFile = path.join(__dirname, "tempCode.exe");
+    fs.writeFileSync(tempFile, code);
+    exec(`g++ "${tempFile}" -o "${execFile}"`, { timeout: 5000 }, (compileErr, compileStdout, compileStderr) => {
+      if (compileErr) {
+        fs.unlinkSync(tempFile);
+        return res.json({
+          stdout: compileStdout,
+          stderr: compileStderr,
+          error: compileErr.message,
+        });
+      }
+      exec(`"${execFile}"`, { timeout: 5000 }, (runErr, runStdout, runStderr) => {
+        fs.unlinkSync(tempFile);
+        fs.unlinkSync(execFile);
+        res.json({
+          stdout: runStdout,
+          stderr: runStderr,
+          error: runErr ? runErr.message : null,
+        });
+      });
+    });
+  } else {
+    return res.status(400).json({ error: "Only JavaScript and C++ are supported in this demo." });
+  }
 });
 
-// LLM suggestion endpoint (Ollama or OpenAI)
-app.post("/api/llm-suggest", async (req, res) => {
-  const { code, prompt } = req.body;
+// AI Chatbot endpoint (OpenRouter free model)
+app.post("/api/ai-chat", async (req, res) => {
+  const { message } = req.body;
   try {
-    // Example for Ollama (local or remote)
-    const ollamaRes = await axios.post("http://localhost:11434/api/generate", {
-      model: "codellama:7b", // or "llama3" or your preferred model
-      prompt: `${prompt}\n\n${code}`,
-      stream: false
-    });
-    res.json({ suggestion: ollamaRes.data.response });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    const openrouterRes = await axios.post(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        model: "openrouter/cinematika-7b", // or "openrouter/mistral-7b"
+        messages: [
+          { role: "system", content: "You are a helpful programming assistant." },
+          { role: "user", content: message },
+        ],
+        max_tokens: 256,
+        temperature: 0.7,
+      },
+      {
+        headers: {
+          "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    res.json({ response: openrouterRes.data.choices[0].message.content });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Delete a room and its data
+app.delete("/api/room/:roomId", async (req, res) => {
+  const { roomId } = req.params;
+  try {
+    // Remove from MongoDB
+    await Room.deleteOne({ roomId });
+    // Remove from Redis
+    await redisClient.del(`room:${roomId}:code`);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
