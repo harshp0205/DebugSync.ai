@@ -306,6 +306,37 @@ export default function CodeEditorPage({
     }
   };
 
+  // --- Notification state for chat and group chat ---
+  const [aiUnread, setAiUnread] = useState(false);
+  const [groupUnread, setGroupUnread] = useState(false);
+
+  // Mark AI chat as read when opened
+  useEffect(() => {
+    if (chatOpen) setAiUnread(false);
+  }, [chatOpen]);
+  // Mark group chat as read when opened
+  useEffect(() => {
+    if (groupChatOpen) setGroupUnread(false);
+  }, [groupChatOpen]);
+
+  // Set AI chat unread when new AI message arrives and sidebar is closed
+  useEffect(() => {
+    if (!chatOpen && chatMessages.length > 0) {
+      const last = chatMessages[chatMessages.length - 1];
+      if (last && last.sender === "AI") setAiUnread(true);
+    }
+    // eslint-disable-next-line
+  }, [chatMessages]);
+
+  // Set group chat unread when new group message arrives and sidebar is closed
+  useEffect(() => {
+    if (!groupChatOpen && groupMessages.length > 0) {
+      const last = groupMessages[groupMessages.length - 1];
+      if (last && last.sender !== username) setGroupUnread(true);
+    }
+    // eslint-disable-next-line
+  }, [groupMessages]);
+
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#18181c] via-[#232526] to-[#18181c] overflow-hidden text-white">
       {/* Info Bar (left side) */}
@@ -320,15 +351,20 @@ export default function CodeEditorPage({
         </div>
         <div className="flex items-center gap-2 mt-1">
           <span className="text-gray-400 text-xs font-semibold">Admin:</span>
-          <span className="text-yellow-300 text-xs font-mono">{admin}</span>
+          <span className="text-yellow-300 text-xs font-mono font-bold">
+            {admin || "(no admin)"}
+          </span>
         </div>
         <div className="mt-2">
           <span className="text-gray-500 text-xs font-semibold">Participants:</span>
           <div className="flex flex-col gap-1 mt-1 w-full">
-            {allUsers.map(u => (
+            {allUsers.filter(u => u !== admin).length === 0 && (
+              <span className="text-gray-400 text-xs">No other participants</span>
+            )}
+            {allUsers.filter(u => u !== admin).map(u => (
               <div key={u} className="flex items-center gap-1 bg-[#232526]/90 px-2 py-1 rounded-md shadow border border-white/10 min-w-0 max-w-full">
                 <span style={{ background: getColorForUser(u) }} className="inline-block w-2 h-2 rounded-full border border-white/70"></span>
-                <span className="truncate text-white/90 font-mono text-xs max-w-[70px]">{u}</span>
+                <span className="truncate text-white/90 font-mono text-xs max-w-[70px]">{u || "(unknown)"}</span>
                 {admin === username && u !== username && (
                   <button
                     className="ml-1 text-[10px] text-red-400 hover:text-red-600 font-bold px-1 py-0.5 rounded hover:bg-red-900/30 transition"
@@ -447,22 +483,55 @@ export default function CodeEditorPage({
       </div>
 
       {/* Chat/Assistant Toggle Buttons */}
-      <div className="fixed right-8 bottom-16 z-50 flex flex-col gap-4">
-        <button
-          onClick={() => { setChatOpen(true); setGroupChatOpen(false); }}
-          className={`bg-purple-600 hover:bg-purple-700 text-white rounded-full p-5 shadow-2xl flex items-center justify-center text-3xl transition-all duration-150 ${chatOpen ? 'ring-4 ring-purple-400/40' : ''}`}
-          title="AI Assistant"
-        >
-          <FaComments />
-        </button>
+      {/* Only show both buttons if neither chat is open. If one is open, show a small floating button for the other. */}
+      {(!chatOpen && !groupChatOpen) && (
+        <div className="fixed right-8 bottom-16 z-50 flex flex-col gap-4">
+          <button
+            onClick={() => { setChatOpen(true); setGroupChatOpen(false); }}
+            className={`relative bg-gradient-to-br from-purple-600 via-pink-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-full p-5 shadow-2xl flex items-center justify-center text-3xl transition-all duration-150 hover:scale-105`}
+            title="AI Assistant"
+          >
+            <FaComments />
+            {aiUnread && (
+              <span className="absolute top-2 right-2 w-3 h-3 bg-pink-400 border-2 border-white rounded-full animate-pulse shadow-lg"></span>
+            )}
+          </button>
+          <button
+            onClick={() => { setGroupChatOpen(true); setChatOpen(false); }}
+            className={`relative bg-gradient-to-br from-blue-600 via-cyan-600 to-green-500 hover:from-blue-700 hover:to-green-700 text-white rounded-full p-5 shadow-2xl flex items-center justify-center text-3xl transition-all duration-150 hover:scale-105`}
+            title="Group Chat"
+          >
+            <span className="font-bold text-xl">👥</span>
+            {groupUnread && (
+              <span className="absolute top-2 right-2 w-3 h-3 bg-yellow-400 border-2 border-white rounded-full animate-pulse shadow-lg"></span>
+            )}
+          </button>
+        </div>
+      )}
+      {chatOpen && !groupChatOpen && (
         <button
           onClick={() => { setGroupChatOpen(true); setChatOpen(false); }}
-          className={`bg-blue-600 hover:bg-blue-700 text-white rounded-full p-5 shadow-2xl flex items-center justify-center text-3xl transition-all duration-150 ${groupChatOpen ? 'ring-4 ring-blue-400/40' : ''}`}
-          title="Group Chat"
+          className="fixed right-8 bottom-16 z-50 bg-gradient-to-br from-blue-600 via-cyan-600 to-green-500 hover:from-blue-700 hover:to-green-700 text-white rounded-full p-3 shadow-2xl flex items-center justify-center text-2xl transition-all duration-150 hover:scale-110"
+          title="Open Group Chat"
         >
-          <span className="font-bold text-xl">👥</span>
+          <span className="font-bold">👥</span>
+          {groupUnread && (
+            <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-yellow-400 border-2 border-white rounded-full animate-pulse shadow-lg"></span>
+          )}
         </button>
-      </div>
+      )}
+      {groupChatOpen && !chatOpen && (
+        <button
+          onClick={() => { setChatOpen(true); setGroupChatOpen(false); }}
+          className="fixed right-8 bottom-16 z-50 bg-gradient-to-br from-purple-600 via-pink-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-full p-3 shadow-2xl flex items-center justify-center text-2xl transition-all duration-150 hover:scale-110"
+          title="Open AI Assistant"
+        >
+          <FaComments />
+          {aiUnread && (
+            <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-pink-400 border-2 border-white rounded-full animate-pulse shadow-lg"></span>
+          )}
+        </button>
+      )}
 
       {/* AI Chatbot Sidebar */}
       <div className={`fixed top-0 right-0 h-full w-80 bg-[#232526]/90 backdrop-blur-2xl shadow-2xl border-l border-white/20 z-40 flex flex-col transition-transform duration-300 ${chatOpen ? "translate-x-0" : "translate-x-full"}`}>
@@ -622,7 +691,3 @@ export default function CodeEditorPage({
   );
 }
 
-// --- Add to socket.io backend (server/index.js) ---
-// socket.on("group-message", ({ roomId, username, message }) => {
-//   io.to(roomId).emit("group-message", { username, message });
-// });
