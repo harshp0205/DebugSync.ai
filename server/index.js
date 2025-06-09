@@ -1,8 +1,8 @@
 const express = require("express");
 const { createServer } = require("http");
 const { Server } = require("socket.io");
-const Redis = require("redis");
 require("dotenv").config();
+const Redis = require("redis");
 // Patch: Load OPENROUTER_API_KEY from .env if not already set
 if (!process.env.OPENROUTER_API_KEY) {
   const fs = require('fs');
@@ -34,7 +34,10 @@ const io = new Server(httpServer, { cors: { origin: "*" } });
 
 mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
 
-const redisClient = Redis.createClient();
+// const redisClient = Redis.createClient();
+const redisClient = Redis.createClient({
+  url: process.env.REDIS_URL
+});
 (async () => {
   await redisClient.connect();
 
