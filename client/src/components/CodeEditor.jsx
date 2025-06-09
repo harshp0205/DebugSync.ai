@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import CodeEditor from "./Editor";
-import { FaPlay, FaMagic, FaSave, FaSignOutAlt, FaPowerOff, FaTerminal, FaLightbulb, FaComments } from "react-icons/fa";
+import { FaPlay, FaMagic, FaSave, FaSignOutAlt, FaPowerOff, FaTerminal, FaLightbulb, FaComments, FaHistory } from "react-icons/fa";
 
 // Glassmorphism main container
 export default function CodeEditorPage({
@@ -101,9 +101,27 @@ export default function CodeEditorPage({
     navigate("/login", { replace: true });
   };
 
+  // --- Track last saved code to avoid unnecessary save prompts ---
+  const [lastSavedCode, setLastSavedCode] = useState(code);
+
+  // Update lastSavedCode on save
+  const handleSaveRoom = () => {
+    if (socket && roomId) {
+      socket.emit("save-room", { roomId, code });
+      setLastSavedCode(code);
+    }
+    setToast("Room saved!");
+    setTimeout(() => setToast(""), 2000);
+  };
+
+  // Update lastSavedCode when code is loaded from server (on join)
+  useEffect(() => {
+    setLastSavedCode(code);
+  }, [roomId]);
+
+  // Only prompt to save if code is different from last saved
   const handleLeaveRoom = () => {
-    // If there are unsaved changes, prompt the user
-    if (code && socket && roomId) {
+    if (code !== lastSavedCode && code && socket && roomId) {
       setShowExitPrompt(true);
       setPendingExit(true);
       return;
@@ -124,6 +142,7 @@ export default function CodeEditorPage({
     setPendingExit(false);
     if (shouldSave && socket && roomId) {
       socket.emit("save-room", { roomId, code });
+      setLastSavedCode(code);
     }
     // Clear all room-specific state on leave
     setOutput("");
@@ -134,14 +153,6 @@ export default function CodeEditorPage({
     setChatMessages([]);
     setChatInput("");
     if (onLeaveRoom) onLeaveRoom(); // App will handle navigation
-  };
-
-  const handleSaveRoom = () => {
-    if (socket && roomId) {
-      socket.emit("save-room", { roomId, code });
-    }
-    setToast("Room saved!");
-    setTimeout(() => setToast(""), 2000);
   };
 
   const handleRun = async () => {
@@ -237,25 +248,96 @@ export default function CodeEditorPage({
     setGroupInput("");
   };
 
+  // --- History modal state ---
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [selectedSnapshot, setSelectedSnapshot] = useState(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Fetch history when modal is opened
+  const openHistory = async () => {
+    setShowHistory(true);
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`/api/room/${roomId}/history`);
+      const data = await res.json();
+      setHistory(Array.isArray(data.history) ? data.history.reverse() : []);
+    } catch (e) {
+      setHistory([]);
+    }
+    setLoadingHistory(false);
+  };
+  const closeHistory = () => {
+    setShowHistory(false);
+    setSelectedSnapshot(null);
+  };
+
+  // --- Admin and user management ---
+  const [admin, setAdmin] = useState("");
+  const [allUsers, setAllUsers] = useState([]);
+
+  useEffect(() => {
+    if (!socket || !roomId) return;
+    const handleRoomAdmin = ({ admin, users }) => {
+      setAdmin(admin);
+      setAllUsers(users);
+    };
+    socket.on("room-admin", handleRoomAdmin);
+    return () => socket.off("room-admin", handleRoomAdmin);
+  }, [socket, roomId]);
+
+  // Listen for being kicked
+  useEffect(() => {
+    if (!socket) return;
+    const handleKicked = ({ roomId: kickedRoom }) => {
+      if (kickedRoom === roomId) {
+        alert("You have been kicked from the room by the admin.");
+        if (onLeaveRoom) onLeaveRoom();
+      }
+    };
+    socket.on("kicked", handleKicked);
+    return () => socket.off("kicked", handleKicked);
+  }, [socket, roomId, onLeaveRoom]);
+
+  // Kick user (admin only)
+  const handleKickUser = (target) => {
+    if (window.confirm(`Kick ${target} from the room?`)) {
+      socket.emit("kick-user", { roomId, target });
+    }
+  };
+
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-[#18181c] via-[#232526] to-[#18181c] overflow-hidden text-white">
       {/* Info Bar (left side) */}
-      <div className="fixed left-6 z-30 flex flex-col gap-2 items-start bg-[#232526]/80 backdrop-blur-md rounded-2xl shadow-2xl px-6 py-4 border border-white/10 min-w-[200px]">
+      <div className="fixed left-6 top-24 z-30 flex flex-col gap-2 items-start bg-[#232526]/80 backdrop-blur-md rounded-2xl shadow-2xl px-4 py-3 border border-white/10 min-w-[160px] max-w-[200px]">
         <div className="flex items-center gap-2">
-          <span className="text-gray-400 font-semibold">Room:</span>
-          <span className="text-blue-300 font-mono text-base">{roomId}</span>
+          <span className="text-gray-400 font-semibold text-xs">Room:</span>
+          <span className="text-blue-300 font-mono text-xs">{roomId}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-gray-400 font-semibold">User:</span>
-          <span className="text-green-300 font-mono text-base">{username}</span>
+          <span className="text-gray-400 font-semibold text-xs">User:</span>
+          <span className="text-green-300 font-mono text-xs">{username}</span>
+        </div>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-gray-400 text-xs font-semibold">Admin:</span>
+          <span className="text-yellow-300 text-xs font-mono">{admin}</span>
         </div>
         <div className="mt-2">
           <span className="text-gray-500 text-xs font-semibold">Participants:</span>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {users.map(u => (
-              <div key={u} className="flex items-center gap-2 bg-[#232526]/90 px-3 py-1 rounded-lg shadow border border-white/10">
-                <span style={{ background: getColorForUser(u) }} className="inline-block w-3 h-3 rounded-full border border-white/70"></span>
-                <span className="truncate text-white/90 font-mono text-sm">{u}</span>
+          <div className="flex flex-col gap-1 mt-1 w-full">
+            {allUsers.map(u => (
+              <div key={u} className="flex items-center gap-1 bg-[#232526]/90 px-2 py-1 rounded-md shadow border border-white/10 min-w-0 max-w-full">
+                <span style={{ background: getColorForUser(u) }} className="inline-block w-2 h-2 rounded-full border border-white/70"></span>
+                <span className="truncate text-white/90 font-mono text-xs max-w-[70px]">{u}</span>
+                {admin === username && u !== username && (
+                  <button
+                    className="ml-1 text-[10px] text-red-400 hover:text-red-600 font-bold px-1 py-0.5 rounded hover:bg-red-900/30 transition"
+                    onClick={() => handleKickUser(u)}
+                    title={`Kick ${u}`}
+                  >
+                    Kick
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -312,6 +394,15 @@ export default function CodeEditorPage({
             style={{ boxShadow: '0 2px 8px #ff4b4b40' }}
           >
             <FaPowerOff className="text-lg" /> Logout
+          </button>
+          {/* History Button */}
+          <button
+            onClick={openHistory}
+            className="flex items-center gap-2 px-3 py-2 rounded-full font-semibold text-base bg-gradient-to-r from-yellow-500 to-yellow-700 text-white shadow hover:scale-105 hover:from-yellow-600 hover:to-yellow-800 focus:outline-none border-2 border-transparent mx-1 transition-all duration-150"
+            style={{ boxShadow: '0 2px 8px #facc1540' }}
+            title="View Room History"
+          >
+            <FaHistory className="text-lg" /> History
           </button>
         </div>
       </div>
@@ -464,6 +555,55 @@ export default function CodeEditorPage({
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {showHistory && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-[#232526] rounded-2xl shadow-2xl p-8 flex flex-col gap-4 border border-white/20 min-w-[480px] max-w-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xl text-white font-semibold flex items-center gap-2"><FaHistory /> Room History</div>
+              <button onClick={closeHistory} className="text-white text-3xl w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 transition-all duration-150">×</button>
+            </div>
+            {loadingHistory ? (
+              <div className="text-gray-300 text-center py-8">Loading history...</div>
+            ) : history.length === 0 ? (
+              <div className="text-gray-400 text-center py-8">No history found for this room.</div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {history.map((snap, idx) => (
+                  <div
+                    key={idx}
+                    className={`rounded-xl px-4 py-3 bg-[#18181c]/80 border border-white/10 flex flex-col gap-1 cursor-pointer hover:bg-[#232526]/90 transition`}
+                    onClick={() => setSelectedSnapshot(snap)}
+                  >
+                    <div className="flex items-center gap-3 text-sm text-gray-300">
+                      <span className="font-bold text-blue-200">{snap.user || "Unknown"}</span>
+                      <span className="text-gray-400">{new Date(snap.timestamp).toLocaleString()}</span>
+                    </div>
+                    <pre className="text-xs text-gray-200 mt-1 max-h-16 overflow-auto whitespace-pre-wrap break-words">{snap.code.slice(0, 200)}{snap.code.length > 200 ? "..." : ""}</pre>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* Snapshot detail modal */}
+            {selectedSnapshot && (
+              <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/70">
+                <div className="bg-[#232526] rounded-2xl shadow-2xl p-8 flex flex-col gap-4 border border-white/20 min-w-[480px] max-w-2xl max-h-[80vh] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-lg text-white font-semibold flex items-center gap-2"><FaHistory /> Snapshot</div>
+                    <button onClick={() => setSelectedSnapshot(null)} className="text-white text-3xl w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 transition-all duration-150">×</button>
+                  </div>
+                  <div className="flex items-center gap-3 text-sm text-gray-300">
+                    <span className="font-bold text-blue-200">{selectedSnapshot.user || "Unknown"}</span>
+                    <span className="text-gray-400">{new Date(selectedSnapshot.timestamp).toLocaleString()}</span>
+                  </div>
+                  <pre className="text-sm text-gray-200 mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words border border-white/10 rounded-xl bg-[#18181c]/80 p-4">{selectedSnapshot.code}</pre>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

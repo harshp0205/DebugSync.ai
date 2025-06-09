@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FaPlus, FaSignInAlt, FaDoorOpen } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
+import io from "socket.io-client";
 
 export default function RoomSelector({ onRoomSelected }) {
   const [input, setInput] = useState("");
@@ -9,6 +10,11 @@ export default function RoomSelector({ onRoomSelected }) {
 
   const createRoom = () => {
     const newRoom = Math.random().toString(36).slice(2, 8);
+    // Pass username to socket.io handshake
+    const username = localStorage.getItem("username") || "User";
+    if (window.socket) {
+      window.socket.io.opts.query = { username };
+    }
     onRoomSelected(newRoom);
     navigate("/room");
   };
@@ -19,8 +25,19 @@ export default function RoomSelector({ onRoomSelected }) {
       return;
     }
     setError("");
+    const username = localStorage.getItem("username") || "User";
+    if (window.socket) {
+      window.socket.io.opts.query = { username };
+    }
     onRoomSelected(input.trim());
     navigate("/room");
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("loggedIn");
+    localStorage.removeItem("username");
+    localStorage.removeItem("token");
+    navigate("/login", { replace: true });
   };
 
   return (
@@ -60,6 +77,12 @@ export default function RoomSelector({ onRoomSelected }) {
             Enter a room code to join an existing session, or create a new room.
           </span>
         </div>
+        <button
+          onClick={handleLogout}
+          className="mt-6 w-full bg-gradient-to-r from-red-500 to-pink-600 text-white px-6 py-3 rounded-xl shadow-md hover:scale-105 transition-all text-lg font-semibold"
+        >
+          Logout
+        </button>
       </div>
     </div>
   );

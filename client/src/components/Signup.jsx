@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
 export default function SignUp() {
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -17,7 +18,7 @@ export default function SignUp() {
     setLoading(true);
 
     // Simple validation
-    if (!email || !password || !confirm) {
+    if (!username || !email || !password || !confirm) {
       setError("All fields are required.");
       setLoading(false);
       return;
@@ -37,11 +38,13 @@ export default function SignUp() {
       const res = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, email, password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Signup failed");
       setSuccess("Account created! Redirecting to login...");
+      // Optionally store username for immediate use (not required, but for consistency)
+      localStorage.setItem("username", username);
       setTimeout(() => navigate("/login"), 1200);
     } catch (err) {
       setError(err.message);
@@ -72,6 +75,16 @@ export default function SignUp() {
           </div>
         )}
         <div className="flex flex-col gap-4">
+          <input
+            className="w-full p-4 bg-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 text-white placeholder-gray-300 border border-white/10 transition text-lg shadow-inner"
+            type="text"
+            placeholder="Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            autoComplete="username"
+            disabled={loading}
+          />
           <input
             className="w-full p-4 bg-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-white placeholder-gray-300 border border-white/10 transition text-lg shadow-inner"
             type="email"

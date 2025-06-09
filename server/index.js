@@ -45,26 +45,58 @@ const redisClient = Redis.createClient();
       console.log(`${socket.id} joined ${roomId}`);
       let room = await Room.findOne({ roomId });
       let code = room ? room.code : "";
-   
       const redisCode = await redisClient.get(`room:${roomId}:code`);
       if (redisCode !== null && redisCode !== undefined && redisCode !== "") {
         code = redisCode;
       }
+      // Track admin and users
+      let username = socket._username;
+      if (!username) {
+        // Try to get from handshake auth (for new connections)
+        username = socket.handshake.query.username || socket.handshake.auth?.username;
+      }
+      if (!username) {
+        username = `User-${socket.id.slice(-4)}`;
+      }
+      if (!room) {
+        // First user is admin
+        await Room.create({ roomId, code, admin: username, users: [username] });
+        socket._isAdmin = true;
+      } else {
+        // Add user to users array if not present
+        if (!room.users.includes(username)) {
+          await Room.updateOne({ roomId }, { $addToSet: { users: username } });
+        }
+        socket._isAdmin = (room.admin === username);
+      }
+      socket._roomId = roomId;
+      socket._username = username;
       socket.emit("receive-code", code);
+      // Send admin info to all users in the room
+      const updatedRoom = await Room.findOne({ roomId });
+      io.to(roomId).emit("room-admin", { admin: updatedRoom.admin, users: updatedRoom.users });
     });
 
     socket.on("code-change", async ({ roomId, code }) => {
       await redisClient.set(`room:${roomId}:code`, code);
       socket.to(roomId).emit("receive-code", code);
+      // No longer save code snapshot here
     });
     socket.on("save-room", async ({ roomId, code }) => {
       // Save code and chat to MongoDB
       const room = await Room.findOne({ roomId });
       let chat = [];
       if (room && room.chat) chat = room.chat;
+      // Save code snapshot to history in MongoDB (only on save)
+      const user = socket._username || "Unknown";
       await Room.findOneAndUpdate(
         { roomId },
-        { code, chat, updatedAt: new Date() },
+        {
+          code,
+          chat,
+          updatedAt: new Date(),
+          $push: { history: { code, timestamp: new Date(), user } }
+        },
         { upsert: true }
       );
       await redisClient.set(`room:${roomId}:code`, code);
@@ -147,6 +179,26 @@ const redisClient = Redis.createClient();
         { upsert: true }
       );
     });
+
+    // Kick user event (admin only)
+    socket.on("kick-user", async ({ roomId, target }) => {
+      const room = await Room.findOne({ roomId });
+      if (!room) return;
+      if (socket._username !== room.admin) return; // Only admin can kick
+      // Remove user from users array
+      await Room.updateOne({ roomId }, { $pull: { users: target } });
+      // Notify kicked user
+      for (const [id, s] of io.of("/").sockets) {
+        if (s._roomId === roomId && s._username === target) {
+          s.emit("kicked", { roomId });
+          s.leave(roomId);
+        }
+      }
+      // Notify all users of updated user list
+      const updatedRoom = await Room.findOne({ roomId });
+      io.to(roomId).emit("room-admin", { admin: updatedRoom.admin, users: updatedRoom.users });
+      io.to(roomId).emit("room-users", updatedRoom.users);
+    });
   });
 
   httpServer.listen(4040, () => console.log("Server on 4040"));
@@ -159,15 +211,15 @@ app.use(express.json()); // Ensure JSON body parsing for API endpoints
 
 // User signup
 app.post("/api/signup", async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: "Email and password required." });
+  const { username, email, password } = req.body;
+  if (!username || !email || !password) return res.status(400).json({ error: "Username, email and password required." });
   try {
-    const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ error: "Email already registered." });
-    const user = new User({ email, password });
+    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+    if (existingUser) return res.status(400).json({ error: "Email or username already registered." });
+    const user = new User({ username, email, password });
     await user.save();
-    const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, email: user.email });
+    const token = jwt.sign({ id: user._id, email: user.email, username: user.username }, JWT_SECRET, { expiresIn: "7d" });
+    res.json({ token, email: user.email, username: user.username });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -182,8 +234,8 @@ app.post("/api/login", async (req, res) => {
     if (!user) return res.status(400).json({ error: "Invalid credentials." });
     const match = await user.comparePassword(password);
     if (!match) return res.status(400).json({ error: "Invalid credentials." });
-    const token = jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, email: user.email });
+    const token = jwt.sign({ id: user._id, email: user.email, username: user.username }, JWT_SECRET, { expiresIn: "7d" });
+    res.json({ token, email: user.email, username: user.username });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -279,6 +331,17 @@ app.get("/api/room/:roomId/chat", async (req, res) => {
   try {
     const room = await Room.findOne({ roomId });
     res.json({ chat: room && room.chat ? room.chat : [] });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Fetch code history for a room
+app.get("/api/room/:roomId/history", async (req, res) => {
+  const { roomId } = req.params;
+  try {
+    const room = await Room.findOne({ roomId });
+    res.json({ history: room && room.history ? room.history : [] });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

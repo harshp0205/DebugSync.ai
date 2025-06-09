@@ -21,7 +21,7 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
       localStorage.setItem("loggedIn", "true");
-      localStorage.setItem("username", data.email);
+      localStorage.setItem("username", data.username);
       localStorage.setItem("token", data.token);
       setTimeout(() => navigate("/home", { replace: true }), 0);
     } catch (err) {
