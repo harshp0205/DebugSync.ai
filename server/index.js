@@ -75,6 +75,11 @@ const redisClient = Redis.createClient();
     // --- Real-time Presence ---
     const roomUsers = {};
 
+    // --- Chat Request/Response Logic ---
+    // Track chat request state per room
+    const chatRequests = {};
+    const chatAccepted = {};
+
     socket.on("user-join", ({ roomId, username }) => {
       if (!roomUsers[roomId]) roomUsers[roomId] = new Set();
       roomUsers[roomId].add(username);
@@ -95,6 +100,40 @@ const redisClient = Redis.createClient();
     socket.on("language-change", ({ roomId, language }) => {
       // Broadcast to all users in the room except sender
       socket.to(roomId).emit("language-change", { language });
+    });
+
+    socket.on("chat-request", ({ roomId, from }) => {
+      if (!roomUsers[roomId]) return;
+      chatRequests[roomId] = from;
+      chatAccepted[roomId] = new Set([from]); // requester auto-accepts
+      // Notify all other users in the room
+      Array.from(roomUsers[roomId]).forEach((u) => {
+        if (u !== from) {
+          io.to(roomId).emit("chat-request-received", { to: u, from });
+        }
+      });
+    });
+
+    socket.on("chat-request-response", ({ roomId, username, accepted }) => {
+      if (!roomUsers[roomId] || !chatRequests[roomId]) return;
+      if (!accepted) {
+        // Someone declined, cancel chat for all
+        io.to(roomId).emit("chat-cancel", { by: username });
+        delete chatRequests[roomId];
+        delete chatAccepted[roomId];
+        return;
+      }
+      chatAccepted[roomId].add(username);
+      // If all users accepted, start chat
+      if (chatAccepted[roomId].size === roomUsers[roomId].size) {
+        io.to(roomId).emit("chat-start", { users: Array.from(roomUsers[roomId]) });
+        delete chatRequests[roomId];
+        delete chatAccepted[roomId];
+      }
+    });
+
+    socket.on("chat-message", ({ roomId, username, message }) => {
+      io.to(roomId).emit("chat-message", { username, message });
     });
   });
 
