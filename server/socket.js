@@ -21,7 +21,7 @@ function setupSocket(io) {
       if (redisCode !== null && redisCode !== undefined && redisCode !== "") {
         code = redisCode;
       }
-      // Track admin and users
+      // --- Redis: Cache user session ---
       let username = socket._username;
       if (!username) {
         username = socket.handshake.query.username || socket.handshake.auth?.username;
@@ -29,6 +29,19 @@ function setupSocket(io) {
       if (!username) {
         username = `User-${socket.id.slice(-4)}`;
       }
+      // Cache user session in Redis
+      await redisClient.set(`session:${socket.id}`, JSON.stringify({ username, roomId, connectedAt: Date.now() }), { EX: 60 * 60 }); // 1 hour expiry
+      // --- Redis: Cache user list for room ---
+      let userList = await redisClient.get(`room:${roomId}:users`);
+      userList = userList ? JSON.parse(userList) : [];
+      if (!userList.includes(username)) userList.push(username);
+      await redisClient.set(`room:${roomId}:users`, JSON.stringify(userList));
+      // --- Redis: Cache chat history for room ---
+      let chatHistory = await redisClient.get(`room:${roomId}:chat`);
+      if (!chatHistory && room && room.chat) {
+        await redisClient.set(`room:${roomId}:chat`, JSON.stringify(room.chat));
+      }
+      // Track admin and users
       if (!room) {
         // First user is admin
         await Room.create({ roomId, code, admin: username, users: [username] });
@@ -85,11 +98,19 @@ function setupSocket(io) {
       socket._username = username;
     });
 
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       const { _roomId, _username } = socket;
       if (_roomId && _username && roomUsers[_roomId]) {
         roomUsers[_roomId].delete(_username);
         io.to(_roomId).emit("room-users", Array.from(roomUsers[_roomId]));
+      }
+      // --- Redis: Remove user from session and room user list ---
+      await redisClient.del(`session:${socket.id}`);
+      if (_roomId && _username) {
+        let userList = await redisClient.get(`room:${_roomId}:users`);
+        userList = userList ? JSON.parse(userList) : [];
+        userList = userList.filter(u => u !== _username);
+        await redisClient.set(`room:${_roomId}:users`, JSON.stringify(userList));
       }
       console.log("User disconnected:", socket.id);
     });
@@ -127,9 +148,16 @@ function setupSocket(io) {
 
     socket.on("group-message", async ({ roomId, username, message }) => {
       io.to(roomId).emit("group-message", { username, message });
+      // --- Redis: Cache chat history ---
+      let chatHistory = await redisClient.get(`room:${roomId}:chat`);
+      chatHistory = chatHistory ? JSON.parse(chatHistory) : [];
+      const chatMsg = { sender: username, text: message, timestamp: new Date() };
+      chatHistory.push(chatMsg);
+      await redisClient.set(`room:${roomId}:chat`, JSON.stringify(chatHistory));
+      // Also persist to MongoDB
       await Room.findOneAndUpdate(
         { roomId },
-        { $push: { chat: { sender: username, text: message, timestamp: new Date() } }, $set: { updatedAt: new Date() } },
+        { $push: { chat: chatMsg }, $set: { updatedAt: new Date() } },
         { upsert: true }
       );
     });
