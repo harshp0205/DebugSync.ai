@@ -1,14 +1,17 @@
-// server/socket.js
 const Room = require("./models/Room");
 const { redisClient } = require("./services/redisService");
 
-function setupSocket(io) {
+// Configure Socket.io handlers
+function setupSocketHandlers(io) {
+  console.log('Setting up Socket.io handlers on main server');
+  
   // --- Real-time Presence ---
   const roomUsers = {};
   // --- Chat Request/Response Logic ---
   const chatRequests = {};
   const chatAccepted = {};
 
+  // Socket.io event handlers
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
@@ -178,6 +181,8 @@ function setupSocket(io) {
       io.to(roomId).emit("room-users", updatedRoom.users);
     });
   });
+
+  return io;
 }
 
-module.exports = { setupSocket };
+module.exports = setupSocketHandlers;

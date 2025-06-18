@@ -22,9 +22,7 @@ export default function CodeEditorPage({
   const [chatMessages, setChatMessages] = useState([]);
   const [showExitPrompt, setShowExitPrompt] = useState(false);
   const [pendingExit, setPendingExit] = useState(false);
-  // const [groupChatOpen, setGroupChatOpen] = useState(false);
-  // const [groupInput, setGroupInput] = useState("");
-  // const [groupMessages, setGroupMessages] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
   // Get username from localStorage (assuming it's stored as 'username')
@@ -155,22 +153,39 @@ export default function CodeEditorPage({
     if (onLeaveRoom) onLeaveRoom(); // App will handle navigation
   };
 
-  const handleRun = async () => {
-    setOutput("Running...");
+  const runCode = async () => {
+    setOutput('Running code...');
+    setIsLoading(true);
+    
     try {
-      const res = await fetch("/api/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language }),
+      const response = await fetch('/api/run', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code,
+          language: language || 'javascript',
+        }),
       });
-      const result = await res.json();
-      setOutput(
-        result.error
-          ? `Error: ${result.error}\n${result.stderr || ""}`
-          : result.stdout || result.stderr || "No output"
-      );
-    } catch (e) {
-      setOutput("Failed to run code: " + e.message);
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        console.error('Error running code:', data);
+        setOutput(`Error: ${data.error || 'Unknown error'}\n${data.stderr || ''}\n${data.details || ''}`);
+        return;
+      }
+      
+      setOutput(data.result || 'No output');
+      if (data.error) {
+        setOutput((prev) => `${prev}\n\nStderr:\n${data.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to run code:', error);
+      setOutput(`Failed to run code: ${error.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -404,7 +419,7 @@ export default function CodeEditorPage({
           </div>
           {/* Tab-style buttons */}
           <button
-            onClick={handleRun}
+            onClick={runCode}
             className="flex items-center gap-1 px-4 py-2 rounded-full font-semibold text-base bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow hover:scale-105 hover:from-green-600 hover:to-emerald-700 focus:outline-none border-2 border-transparent mx-1 transition-all duration-150"
             style={{ boxShadow: '0 2px 8px #00ffb340' }}
           >
@@ -461,23 +476,6 @@ export default function CodeEditorPage({
               </div>
               <pre className="text-green-100 font-mono whitespace-pre-wrap break-words text-base mt-11 max-h-52 overflow-auto">{output}</pre>
             </div>
-            {/* <div className={`bg-gradient-to-br from-purple-900/80 to-pink-900/80 rounded-xl p-3 shadow border border-white/10 flex flex-col transition-all duration-200 ${showSuggestion ? 'min-h-[180px]' : 'min-h-[32px]'}`}>
-              <div className="flex items-center gap-1 mb-1 justify-between">
-                <div className="flex items-center gap-1">
-                  <FaLightbulb className="text-purple-300 text-base" />
-                  <strong className="text-purple-100 text-base">AI Suggestion</strong>
-                </div>
-                <button
-                  className="text-xs text-purple-100 hover:underline focus:outline-none"
-                  onClick={() => setShowSuggestion(v => !v)}
-                >
-                  {showSuggestion ? "Hide" : "Show"}
-                </button>
-              </div>
-              {showSuggestion && (
-                <pre className="text-purple-100 font-mono whitespace-pre-wrap break-words text-sm mt-1 max-h-64 overflow-auto">{suggestion}</pre>
-              )}
-            </div> */}
           </div>
         </div>
       </div>

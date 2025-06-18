@@ -6,7 +6,7 @@ import Register from "./components/Signup";
 import CodeEditorPage from "./components/CodeEditor";
 import RoomSelector from "./components/RoomSelector";
 
-const socket = io("http://localhost:4040", {
+const socket = io("http://localhost:3000", {
   autoConnect: true,
 });
 

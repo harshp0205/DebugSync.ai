@@ -1,0 +1,41 @@
+services:
+  server:
+    build: 
+      context: ./server
+    ports:
+      - "3000:3000"
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - REDIS_URL=${REDIS_URL}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - NODE_ENV=development
+      - CORS_ORIGIN=http://localhost:5173
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    restart: unless-stopped
+    networks:
+      - debugsync-network
+    cap_add:
+      - SYS_ADMIN  # Add capabilities for code execution
+
+  client:
+    build:
+      context: ./client
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=/api
+      - VITE_SOCKET_URL=/
+    depends_on:
+      - server
+    restart: unless-stopped
+    networks:
+      - debugsync-network
+
+networks:
+  debugsync-network:
+    driver: bridge
