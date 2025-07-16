@@ -16,52 +16,113 @@ function setupSocketHandlers(io) {
     console.log("User connected:", socket.id);
 
     socket.on("join-room", async (roomId) => {
-      socket.join(roomId);
-      console.log(`${socket.id} joined ${roomId}`);
-      let room = await Room.findOne({ roomId });
-      let code = room ? room.code : "";
-      const redisCode = await redisClient.get(`room:${roomId}:code`);
-      if (redisCode !== null && redisCode !== undefined && redisCode !== "") {
-        code = redisCode;
-      }
-      // --- Redis: Cache user session ---
-      let username = socket._username;
-      if (!username) {
-        username = socket.handshake.query.username || socket.handshake.auth?.username;
-      }
-      if (!username) {
-        username = `User-${socket.id.slice(-4)}`;
-      }
-      // Cache user session in Redis
-      await redisClient.set(`session:${socket.id}`, JSON.stringify({ username, roomId, connectedAt: Date.now() }), { EX: 60 * 60 }); // 1 hour expiry
-      // --- Redis: Cache user list for room ---
-      let userList = await redisClient.get(`room:${roomId}:users`);
-      userList = userList ? JSON.parse(userList) : [];
-      if (!userList.includes(username)) userList.push(username);
-      await redisClient.set(`room:${roomId}:users`, JSON.stringify(userList));
-      // --- Redis: Cache chat history for room ---
-      let chatHistory = await redisClient.get(`room:${roomId}:chat`);
-      if (!chatHistory && room && room.chat) {
-        await redisClient.set(`room:${roomId}:chat`, JSON.stringify(room.chat));
-      }
-      // Track admin and users
-      if (!room) {
-        // First user is admin
-        await Room.create({ roomId, code, admin: username, users: [username] });
-        socket._isAdmin = true;
-      } else {
-        // Add user to users array if not present
-        if (!room.users.includes(username)) {
-          await Room.updateOne({ roomId }, { $addToSet: { users: username } });
+      try {
+        socket.join(roomId);
+        console.log(`${socket.id} joined room ${roomId}`);
+        
+        // Find existing room
+        let room = await Room.findOne({ roomId });
+        console.log(`Room lookup for ${roomId}:`, room ? 'Found' : 'Not found');
+        
+        let code = room ? room.code : "";
+        const redisCode = await redisClient.get(`room:${roomId}:code`);
+        if (redisCode !== null && redisCode !== undefined && redisCode !== "") {
+          code = redisCode;
         }
-        socket._isAdmin = (room.admin === username);
+        
+        // --- Extract username from multiple sources ---
+        let username = socket._username;
+        if (!username) {
+          username = socket.handshake.query.username || socket.handshake.auth?.username;
+        }
+        if (!username) {
+          username = `User-${socket.id.slice(-4)}`;
+        }
+        
+        console.log(`User ${username} joining room ${roomId}`);
+        
+        // Cache user session in Redis
+        await redisClient.set(`session:${socket.id}`, JSON.stringify({ username, roomId, connectedAt: Date.now() }), { EX: 60 * 60 }); // 1 hour expiry
+        
+        // --- Redis: Cache user list for room ---
+        let userList = await redisClient.get(`room:${roomId}:users`);
+        userList = userList ? JSON.parse(userList) : [];
+        if (!userList.includes(username)) userList.push(username);
+        await redisClient.set(`room:${roomId}:users`, JSON.stringify(userList));
+        
+        // --- Redis: Cache chat history for room ---
+        let chatHistory = await redisClient.get(`room:${roomId}:chat`);
+        if (!chatHistory && room && room.chat) {
+          await redisClient.set(`room:${roomId}:chat`, JSON.stringify(room.chat));
+        }
+        
+        // Track admin and users
+        if (!room) {
+          // First user is admin - CREATE NEW ROOM
+          console.log(`Creating new room ${roomId} with admin ${username}`);
+          try {
+            const newRoom = await Room.create({ 
+              roomId, 
+              code: code || "// Start coding...", 
+              admin: username, 
+              users: [username],
+              createdAt: new Date(),
+              updatedAt: new Date()
+            });
+            console.log(`Successfully created room in MongoDB:`, newRoom._id);
+            socket._isAdmin = true;
+          } catch (createError) {
+            console.error(`Error creating room ${roomId}:`, createError);
+            // Check if room was created by another user simultaneously
+            room = await Room.findOne({ roomId });
+            if (room) {
+              console.log(`Room ${roomId} was created by another user simultaneously`);
+              if (!room.users.includes(username)) {
+                await Room.updateOne({ roomId }, { $addToSet: { users: username } });
+                console.log(`Added ${username} to existing room ${roomId}`);
+              }
+              socket._isAdmin = (room.admin === username);
+            } else {
+              console.error(`Failed to create room ${roomId} and no existing room found`);
+              socket.emit("room-error", { error: "Failed to create room" });
+              return;
+            }
+          }
+        } else {
+          // Add user to existing room
+          console.log(`Adding ${username} to existing room ${roomId}`);
+          if (!room.users.includes(username)) {
+            try {
+              await Room.updateOne({ roomId }, { $addToSet: { users: username } });
+              console.log(`Successfully added ${username} to room ${roomId}`);
+            } catch (updateError) {
+              console.error(`Error adding user to room ${roomId}:`, updateError);
+            }
+          } else {
+            console.log(`User ${username} already in room ${roomId}`);
+          }
+          socket._isAdmin = (room.admin === username);
+        }
+        
+        socket._roomId = roomId;
+        socket._username = username;
+        
+        // Send initial code to user
+        socket.emit("receive-code", code);
+        
+        // Send admin info to all users in the room
+        const updatedRoom = await Room.findOne({ roomId });
+        if (updatedRoom) {
+          console.log(`Room ${roomId} final state: admin=${updatedRoom.admin}, users=${updatedRoom.users}`);
+          io.to(roomId).emit("room-admin", { admin: updatedRoom.admin, users: updatedRoom.users });
+        } else {
+          console.error(`Could not find room ${roomId} after processing`);
+        }
+        
+      } catch (error) {
+        console.error(`Error in join-room for ${roomId}:`, error);
+        socket.emit("room-error", { error: "Failed to join room" });
       }
-      socket._roomId = roomId;
-      socket._username = username;
-      socket.emit("receive-code", code);
-      // Send admin info to all users in the room
-      const updatedRoom = await Room.findOne({ roomId });
-      io.to(roomId).emit("room-admin", { admin: updatedRoom.admin, users: updatedRoom.users });
     });
 
     socket.on("code-change", async ({ roomId, code }) => {
