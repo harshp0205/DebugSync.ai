@@ -19,18 +19,30 @@ export default function RoomSelector({ onRoomSelected }) {
     navigate("/room");
   };
 
-  const joinRoom = () => {
+  const joinRoom = async () => {
     if (!input.trim()) {
       setError("Please enter a room code.");
       return;
     }
     setError("");
-    const username = localStorage.getItem("username") || "User";
-    if (window.socket) {
-      window.socket.io.opts.query = { username };
+    const roomCode = input.trim();
+    try {
+      // Check if room exists via backend API
+      const res = await fetch(`/api/room/${roomCode}/exists`);
+      const data = await res.json();
+      if (!data.exists) {
+        setError("Room does not exist. Please check the code.");
+        return;
+      }
+      const username = localStorage.getItem("username") || "User";
+      if (window.socket) {
+        window.socket.io.opts.query = { username };
+      }
+      onRoomSelected(roomCode);
+      navigate("/room");
+    } catch (e) {
+      setError("Error checking room existence. Please try again.");
     }
-    onRoomSelected(input.trim());
-    navigate("/room");
   };
 
   const handleLogout = () => {
